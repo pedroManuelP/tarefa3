@@ -8,9 +8,9 @@
 #include <math.h>
 
 #define DAC_CHAN_OUTPUT DAC_CHAN_0 // GPIO25
-#define BUTTON1_PIN GPIO_NUM_32 // Botão para mudar o formato de onda.
-#define BUTTON2_PIN GPIO_NUM_35 // Botão para mudar a amplitude da onda.
-#define BUTTON3_PIN GPIO_NUM_34 // Botão para mudar a frequência da onda.
+#define BUTTON1_PIN GPIO_NUM_13 // Botão para mudar o formato de onda.
+#define BUTTON2_PIN GPIO_NUM_12 // Botão para mudar a amplitude da onda.
+#define BUTTON3_PIN GPIO_NUM_14 // Botão para mudar a frequência da onda.
 #define WAVE_SIZE 1024 // Qtde. de pontos da onda.
 
 static const char* TAG_WAVE_FORM = "WAVE_FORM";
@@ -19,28 +19,35 @@ static const char* TAG_WAVE_FREQ = "WAVE_FREQ";
 
 uint8_t wave_buffer[WAVE_SIZE];  // Conjunto de pontos da onda.
 
-void change_freq(int* wave_freq_hz, float* wave_sample_period_ms){// Cicla entre 10 valores de amplitude entre 100 e 1000
-    if(*wave_freq_hz==1000){
+void change_freq(int* wave_freq_hz, uint32_t* wave_sample_period_us){// Cicla entre 10 valores de amplitude entre 100 e 1000
+    if(*wave_freq_hz>=1000){
         *wave_freq_hz=100;
     }else{
         *wave_freq_hz+=100;   // = (1000/10)
     }
-    ESP_LOGI(TAG_WAVE_FREQ, "%d", *wave_freq_hz);
-    *wave_sample_period_ms=(1000/(*wave_freq_hz))/(WAVE_SIZE);
+    float periodo_us =
+        1000000.0f /
+        ((float)(*wave_freq_hz) * (float)WAVE_SIZE);
+    *wave_sample_period_us = (uint32_t)lroundf(periodo_us);
+
+    if (*wave_sample_period_us < 1) {
+        *wave_sample_period_us = 1;
+    }
+    ESP_LOGI(TAG_WAVE_FREQ, "%d Hz", *wave_freq_hz);
 }
 
 void change_amp(uint8_t* wave_amp){// Cicla entre 5 valores de amplitude entre 0 e 255
-    if(*wave_amp==255){
+    if(*wave_amp>=255){
         *wave_amp=0;
     }else{
         *wave_amp+=51;   // = (255/5)
     }
-    ESP_LOGI(TAG_WAVE_AMP, "%d", *wave_amp);
+    ESP_LOGI(TAG_WAVE_AMP, "%u", (unsigned)*wave_amp);
 }
 
 void generate_wave(int wave_type, uint8_t* wave_amp){// Recalcula o wave_buffer
-    float temp_buffer[WAVE_SIZE];    // Usados para os cálculos com ponto flutuante.
-    float alpha = *wave_amp/(WAVE_SIZE/2);
+    float temp_value=0;    // Usados para os cálculos com ponto flutuante.
+    float alpha = (float)(*wave_amp)/((float)WAVE_SIZE/2);
 
     // Cálculo os pontos da curva(em float)
     for(int i=0;i<WAVE_SIZE;i++){
@@ -48,31 +55,31 @@ void generate_wave(int wave_type, uint8_t* wave_amp){// Recalcula o wave_buffer
             case 0:
                 // Onda quadrada
                 if(i < (WAVE_SIZE/2)){
-                    temp_buffer[i]=0;
+                    temp_value=0;
                 }else{
-                    temp_buffer[i] = *wave_amp;
+                    temp_value = (float)(*wave_amp);
                 }
             break;
         
             case 1:
                 // Onda dente-de-serra
-                temp_buffer[i] = (alpha/2)*i;
+                temp_value = (alpha/2.0f)*(float)i;
             break;
 
             case 2:
                 // Onda triangular
                 if(i <= (WAVE_SIZE/2)){
                     // 0 < i <= N/2
-                    temp_buffer[i] = alpha*i;
+                    temp_value = alpha*(float)i;
                 }else{
                     // N/2 < i < N
-                    temp_buffer[i] = 2 * (*wave_amp) - alpha*i;
+                    temp_value = (float)(2.0f*(*wave_amp)) - alpha*(float)i;
                 }
             break;
             
             case 3:
                 // Onda senoidal
-                temp_buffer[i] = ((*wave_amp)/2) * sinf(2*M_PI*(i/WAVE_SIZE)) + ((*wave_amp)/2);
+                temp_value = ((float)(*wave_amp)/2.0f) * sinf(2*M_PI*((float)i/(float)(WAVE_SIZE))) + ((float)(*wave_amp)/2.0f);
             break;
 
             default:
@@ -80,12 +87,12 @@ void generate_wave(int wave_type, uint8_t* wave_amp){// Recalcula o wave_buffer
         }
 
         //  Saturação do Buffer e conversão para uint8_t
-        if(temp_buffer[i] < 0){
+        if(temp_value < 0){
             wave_buffer[i] = 0;
-        }else if(temp_buffer[i] > *wave_amp){
+        }else if(temp_value > *wave_amp){
             wave_buffer[i] = *wave_amp;
         }else{
-            wave_buffer[i] = (uint8_t)(temp_buffer[i]);
+            wave_buffer[i] = (uint8_t)(lroundf(temp_value));
         }
     }// Fim do laço
 
@@ -93,7 +100,7 @@ void generate_wave(int wave_type, uint8_t* wave_amp){// Recalcula o wave_buffer
     if(wave_type==0){
         ESP_LOGI(TAG_WAVE_FORM, "Quadrada");
     }else if(wave_type==1){
-        ESP_LOGI(TAG_WAVE_FORM, "Dente-de-serra");
+        ESP_LOGI(TAG_WAVE_FORM, "Dente de serra");
     }else if(wave_type==2){
         ESP_LOGI(TAG_WAVE_FORM, "Triangular");
     }else if(wave_type==3){
@@ -107,7 +114,7 @@ void app_main(void)
     dac_oneshot_config_t dac_cfg={
         .chan_id=DAC_CHAN_OUTPUT,
     }; 
-    dac_oneshot_new_channel(&dac_cfg, &dac_handle);
+    ESP_ERROR_CHECK(dac_oneshot_new_channel(&dac_cfg, &dac_handle));
 
     //==========//==========//==========//==========//==========//==========//==========//==========//
 
@@ -131,7 +138,14 @@ void app_main(void)
     int wave_type=0;    // Quadrada(0), Dente de serra(1), Triangular(2), Senóide(3).
     uint8_t wave_amp = 255; // Amplitude da onda no wave_buffer[].
     int wave_freq_hz=100;   // Frequência da onda no wave_buffer[].
-    float wave_sample_period_ms=(1000/wave_freq_hz)/(WAVE_SIZE);
+    uint32_t wave_sample_period_us =
+    (uint32_t)lroundf(
+        1000000.0f /
+        ((float)wave_freq_hz * (float)WAVE_SIZE)
+    );
+    if (wave_sample_period_us < 1) {
+        wave_sample_period_us = 1;
+    }
     generate_wave(wave_type, &wave_amp);
 
     int idx=0;
@@ -164,7 +178,7 @@ void app_main(void)
             button3_pressed = true;
 
             // Muda a frequência da onda
-            change_freq(&wave_freq_hz, &wave_sample_period_ms);
+            change_freq(&wave_freq_hz, &wave_sample_period_us);
         }else if(!button3_level){
             button3_pressed = false;
         }
@@ -173,6 +187,6 @@ void app_main(void)
 
         idx++;
         if(idx==WAVE_SIZE)idx=0;
-        vTaskDelay(wave_sample_period_ms/portTICK_PERIOD_MS);
+        esp_rom_delay_us(wave_sample_period_us);
     }
 }
