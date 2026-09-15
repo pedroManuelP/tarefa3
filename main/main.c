@@ -19,11 +19,11 @@ static const char* TAG_WAVE_FREQ = "WAVE_FREQ";
 
 uint8_t wave_buffer[WAVE_SIZE];  // Conjunto de pontos da onda.
 
-void change_freq(int* wave_freq_hz, uint32_t* wave_sample_period_us){// Cicla entre 10 valores de amplitude entre 100 e 1000
-    if(*wave_freq_hz>=1000){
-        *wave_freq_hz=100;
+void change_freq(int* wave_freq_hz, uint32_t* wave_sample_period_us){// Cicla entre 10 valores de frequência entre 10 e 100 Hz
+    if(*wave_freq_hz>=100){
+        *wave_freq_hz=10;
     }else{
-        *wave_freq_hz+=100;   // = (1000/10)
+        *wave_freq_hz+=10;   // = (100/10)
     }
     float periodo_us =
         1000000.0f /
@@ -123,26 +123,26 @@ void app_main(void)
 
     gpio_reset_pin(BUTTON1_PIN);
     gpio_set_direction(BUTTON1_PIN, GPIO_MODE_INPUT);
-    gpio_pulldown_en(BUTTON1_PIN);
+    gpio_pullup_en(BUTTON1_PIN);
 
     gpio_reset_pin(BUTTON2_PIN);
     gpio_set_direction(BUTTON2_PIN, GPIO_MODE_INPUT);
-    gpio_pulldown_en(BUTTON2_PIN);
+    gpio_pullup_en(BUTTON2_PIN);
 
     gpio_reset_pin(BUTTON3_PIN);
     gpio_set_direction(BUTTON3_PIN, GPIO_MODE_INPUT);
-    gpio_pulldown_en(BUTTON3_PIN);
+    gpio_pullup_en(BUTTON3_PIN);
 
     //==========//==========//==========//==========//==========//==========//==========//==========//
     
     int wave_type=0;    // Quadrada(0), Dente de serra(1), Triangular(2), Senóide(3).
     uint8_t wave_amp = 255; // Amplitude da onda no wave_buffer[].
-    int wave_freq_hz=100;   // Frequência da onda no wave_buffer[].
+    int wave_freq_hz=60;   // Frequência da onda no wave_buffer[].
     uint32_t wave_sample_period_us =
     (uint32_t)lroundf(
         1000000.0f /
         ((float)wave_freq_hz * (float)WAVE_SIZE)
-    );
+    );  //  Delay entre a impressão de 2 pontos consecutivos da onda no wave_buffer[] = 1/(wave_freq_hz*WAVE_SIZE)
     if (wave_sample_period_us < 1) {
         wave_sample_period_us = 1;
     }
