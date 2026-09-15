@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <driver/gpio.h>    // Pinos I/O
-#include <driver/ledc.h>    //  TIMER e PWM
+#include <driver/ledc.h>
+#include <driver/gptimer.h>
 #include <esp_log.h>    //  ESP_LOGI()
 #include <driver/dac_oneshot.h>
 #include <freertos/FreeRTOS.h>
@@ -19,11 +20,11 @@ static const char* TAG_WAVE_FREQ = "WAVE_FREQ";
 
 uint8_t wave_buffer[WAVE_SIZE];  // Conjunto de pontos da onda.
 
-void change_freq(int* wave_freq_hz, uint32_t* wave_sample_period_us){// Cicla entre 10 valores de frequência entre 10 e 100 Hz
-    if(*wave_freq_hz>=100){
-        *wave_freq_hz=10;
+void change_freq(int* wave_freq_hz, uint32_t* wave_sample_period_us){// Cicla entre os valores de frequência
+    if(*wave_freq_hz>=10){
+        *wave_freq_hz=1;
     }else{
-        *wave_freq_hz+=10;   // = (100/10)
+        *wave_freq_hz+=1;
     }
     float periodo_us =
         1000000.0f /
@@ -118,7 +119,7 @@ void app_main(void)
 
     //==========//==========//==========//==========//==========//==========//==========//==========//
 
-    bool button1_level, button2_level, button3_level;
+    bool button1_level=false, button2_level=false, button3_level=false;
     bool button1_pressed=false, button2_pressed=false, button3_pressed=false;
 
     gpio_reset_pin(BUTTON1_PIN);
@@ -137,7 +138,7 @@ void app_main(void)
     
     int wave_type=0;    // Quadrada(0), Dente de serra(1), Triangular(2), Senóide(3).
     uint8_t wave_amp = 255; // Amplitude da onda no wave_buffer[].
-    int wave_freq_hz=60;   // Frequência da onda no wave_buffer[].
+    int wave_freq_hz=10;   // Frequência da onda no wave_buffer[].
     uint32_t wave_sample_period_us =
     (uint32_t)lroundf(
         1000000.0f /
